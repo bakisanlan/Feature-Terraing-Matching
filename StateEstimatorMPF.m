@@ -4,6 +4,7 @@ classdef StateEstimatorMPF < handle
         particles
         particles_cov
         weights
+        likelihood
         N
         dt
         R
@@ -44,7 +45,7 @@ classdef StateEstimatorMPF < handle
             self.MPF_initilize(mu_part,std_part,mu_kalman,cov_kalman);
         end
 
-        function param_estimate = getEstimate(self,u,X_nom,hbaro,UAVImage,true_rot,true_pos)
+        function param_estimate = getEstimate(self,u,X_nom,UAVImage)
             % rng(32,"twister");
 
             self.count_est = self.count_est + 1;
@@ -53,7 +54,7 @@ classdef StateEstimatorMPF < handle
 
             self.predict(u, rotM_nom);
             
-            self.find_likelihood_particles(UAVImage,X_nom,true_rot,true_pos)
+            self.find_likelihood_particles(UAVImage,X_nom)
            
             self.update()
 
@@ -112,7 +113,7 @@ classdef StateEstimatorMPF < handle
             C = zeros(1,l);
 
             % Qn  = diag([0 0 0]);
-            Qn  = diag([4 4 1]);
+            Qn  = diag([1 1 0]);
             Qnl = zeros(n,l);
             Ql  = diag([self.Accelerometer.BiasInstability.^2 * self.dt^2, ...
                         self.Gyroscope.BiasInstability.^2     * self.dt^2, ...
@@ -131,7 +132,7 @@ classdef StateEstimatorMPF < handle
                 self.particles(:,i) = f_nonlin * self.particles(:,i) + ...
                                       A_nonlin * self.KalmanFiltersState(:,i) + ...
                                       ((A_nonlin * self.KalmanFiltersCovariance(:,:,i) * A_nonlin' + Qn).^1/c) * randn(3,1);
-                % self.particles(3,i) = 0;
+                self.particles(3,i) = 0;
                 
                 % Kalman Filter Propagation
                 A_lin_t = A_lin;% - Qnl'/Qn*A_nonlin;
@@ -145,12 +146,13 @@ classdef StateEstimatorMPF < handle
 
                 % self.KalmanFiltersState(:,i)        = A_lin_t*self.KalmanFiltersState(:,i) + Qnl'/Qn*Z + L*(Z - A_nonlin*self.KalmanFiltersState(:,i));
                 self.KalmanFiltersState(:,i)        = A_lin_t*self.KalmanFiltersState(:,i) + L*(Z - A_nonlin*self.KalmanFiltersState(:,i)) + f_lin*particle_current;
+                self.KalmanFiltersState(4:6,i)      = zeros(3,1); % rotation is known
                 self.KalmanFiltersCovariance(:,:,i) = A_lin_t*self.KalmanFiltersCovariance(:,:,i)*A_lin_t' + Ql_t - L*N*L';
             end
         end
 
 
-        function find_likelihood_particles(self,UAVImage,X_nom,true_rot,true_pos)
+        function find_likelihood_particles(self,UAVImage,X_nom)
             %This function will find Mean Absolute Error(MAE) value through
             %comparing of each particle measurement with aircraft measurement
             %by either using sliding method or raycasting method.
@@ -162,117 +164,18 @@ classdef StateEstimatorMPF < handle
             % particless(:,4:6) = rot;
 
             % X_nom(3) = true_
-            h_INS = X_nom(3);
+            % h_INS = X_nom(3);
             pos_hypo = X_nom(1:3) + self.particles;
             % rot_hypo = quat2eul(X_nom(7:10)')' + self.KalmanFiltersState(7:9,:) + radar_tilt;
-            rot_hypo = repmat(true_rot' + radar_tilt,1,self.N);
+            % rot_hypo = repmat(true_rot' + radar_tilt,1,self.N);
             
-            X_hypo = [pos_hypo ; rot_hypo]';
+            X_hypo = pos_hypo';
             % X_hypo(:,3) = true_pos(3);
 
+            rot_hypo = quat2eul(X_nom(7:10)')' + self.KalmanFiltersState(7:9,:);
+            yaw = rad2deg(rot_hypo(1));
 
-            [Xs_all,Ys_all,Zs_all, Xw_all,Yw_all,Zw_all]= self.hReferenceMapScanner.lookupElevation( ...
-                X_hypo,UAVImage,flagRAYCAST);
-
-            mm = 100;
-            X_terrain_rougness = [ [true_pos(1)+mm true_pos(2:3)'] true_rot ;
-                                   [true_pos(1)-mm true_pos(2:3)'] true_rot ;
-                                   [true_pos(1) true_pos(2)+mm true_pos(3)] true_rot ;
-                                   [true_pos(1) true_pos(2)-mm true_pos(3)] true_rot];
-
-            [~,~,Zs_tr, ~,~,~]= self.hReferenceMapScanner.lookupElevation( ...
-                X_terrain_rougness,UAVImage,flagRAYCAST);
-
-            if length(Zs_all(1,:)) ~= 1
-                % self.terrain_uniqueness(self.count_est) = std(mean(Zs_tr(:,6),2),0,1);
-                self.terrain_uniqueness(self.count_est) = std(mean(Zs_all,2,'omitmissing'),0,1);
-
-            else
-                % self.terrain_uniqueness(self.count_est) = std(mean(Zs_tr, 2),0,1);
-                 self.terrain_uniqueness(self.count_est) = std(Zs_all,0,1,"omitmissing");
-
-            end
-
-            Zr_s_org = UAVImage.s.Location(:,3);
-
-            for i=1:self.N
-                Xr_s = UAVImage.s.Location(:,1);
-                Yr_s = UAVImage.s.Location(:,2);
-                Zr_s = UAVImage.s.Location(:,3);
-                Xs = Xs_all(i,:)';
-                Ys = Ys_all(i,:)';
-                Zs = Zs_all(i,:)';
-
-                % Xr_w = ptCloudRadar.w.Location(:,1);
-                % Yr_w = ptCloudRadar.w.Location(:,2);
-                % Zr_w = ptCloudRadar.w.Location(:,3);
-                % Xw = Xw_all(i,:)';
-                % Yw = Yw_all(i,:)';
-                % Zw = Zw_all(i,:)';
-
-                % Zw   = X_hypo(i,3) - Zw_all(i,:)';
-                % Zr_w = hbaro - ptCloudRadar.w.Location(:,3);
-                % % Zr_w = (self.X(3) + h_INS) - ptCloudRadar.w.Location(:,3);
-                
-                % Zw =  Zw_all(i,:)';
-                % Zr_w = ptCloudRadar.w.Location(:,3);
-
-                % Decide the best way to treat NANs.
-                % idx_w = or(isnan(Zw),isnan(Zr_w));
-                idx = or(isnan(Zs),isnan(Zr_s));
-                % Deleting NaNs
-                Xr_s(idx) = [];
-                Yr_s(idx) = [];
-                Zr_s(idx) = [];
-
-                Xs(idx) = [];
-                Ys(idx) = [];
-                Zs(idx) = [];
-
-                % Xr_w(idx_w) = [];
-                % Yr_w(idx_w) = [];
-                % Zr_w(idx_w) = [];
-                % 
-                % Xw(idx_w) = [];
-                % Yw(idx_w) = [];
-                % Zw(idx_w) = [];
-
-
-                %particle_pc_w(idx,:) = [];
-
-                if ~isempty(Zr_s)
-                    % add new MAE to end of batch array
-                    % self.MAE_Batch_Part{i,1}(self.batch_size) =  mean(abs(Zw - Zr_w),1);
-                    % self.MAE_particles(1,i) = mean((Zw - Zr_w).^2,1);
-                    % self.MAE_particles(1,i) = mean((Zs - Zr_s).^2,1);
-                    % self.MAE_particles(1,i) = sqrt(mean(abs(Xw - Xr_w),1)^2 + mean(abs(Yw - Yr_w),1)^2 + mean(abs(Zw - Zr_w),1)^2);
-                    self.MAE_particles(1,i) = sqrt(mean(abs(Xs - Xr_s),1)^2 + mean(abs(Ys - Yr_s),1)^2 + mean(abs(Zs - Zr_s),1)^2);,
-                    self.partc_Zs_error{i,self.count_est} = {pos_hypo(:,i)' , mean(abs(Zs - Zr_s),1)};
-                else
-                    self.MAE_particles(1,i) = 999;
-                    self.partc_Zs_error{i,self.count_est} = 999;
-                    self.partc_Zs_error{i,self.count_est} = {pos_hypo(:,i)' , mean(abs(Zs - Zr_s),1)};
-
-
-                end
-                % Storing particles point cloud measurement data in world
-                % frame for visualization
-                %self.particles_pc{i} = particle_pc_w;
-
-                % Dealing empyt value with replacing NaN
-                % if isempty(self.particles_pc{i})
-                %     self.particles_pc{i} = NaN(1,3);
-                % end
-
-                % Storing Radar elevation value for every estimation history
-                % self.radar_Z{1,self.count_est} = Zr_w;
-                % self.part_radar_pattern_world{i,self.count_est} = {xw(i,:),yw(i,:),Zw_all(i,:)};
-
-            end
-            
-            self.MAE_particles_hist(self.count_est,:) = self.MAE_particles;
-            self.partc_radar_hist{self.count_est} = {Xw_all, Yw_all Zw_all};
-
+            self.likelihood = self.hReferenceMapScanner.find_likelihood(X_hypo(:,1:2),yaw,UAVImage);
         end
 
 
@@ -297,8 +200,8 @@ classdef StateEstimatorMPF < handle
             % likelihood = exp()
             % E = self.MAE_particles - 
             % PF Mesaurement Update
-            % self.weights = self.weights .* likelihood;
-            self.weights = self.weights .* (1/(sqrt(self.R)*sqrt(2*pi))) .* exp(-0.5 .* (self.MAE_particles./sqrt(self.R)).^2);
+            self.weights = self.weights .* self.likelihood';
+            % self.weights = self.weights .* (1/(sqrt(self.R)*sqrt(2*pi))) .* exp(-0.5 .* (self.MAE_particles./sqrt(self.R)).^2);
 
             %normalizing weights after each update
             self.weights = self.weights + 1e-300; % preventing 0 weights value

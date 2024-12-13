@@ -6,10 +6,13 @@ classdef AerialImageModel < handle
     properties
         % Map dimensions
         mapDim;
+        num_level
 
         % A and R
         I  % base image in mxnxc sized
         mp % meter/pixel ratio
+        featuresBase
+        validpointsBase
     end
 
     methods
@@ -37,9 +40,12 @@ classdef AerialImageModel < handle
         function loadData(obj,filename)
             %loadData Load data from file
 
-            obj.I  = imread(filename);
+            obj.I  = im2double(im2gray(imread(filename)));
             obj.mapDim = size(obj.I);
             obj.mp = 725/obj.mapDim(1);
+            obj.num_level = 1;
+            [obj.featuresBase,obj.validpointsBase] = extractFeatures(obj.I,detectORBFeatures(obj.I,"NumLevels",obj.num_level));
+
 
         end
 

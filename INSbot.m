@@ -169,13 +169,16 @@ classdef INSbot < handle
             %%IMU Move
             RotM = quat2rotm(obj.NomState(7:10)');
             acc_m  = -obj.IMUreading{1};  % matlab accel reading should be negate
-            gyro_m =  obj.IMUreading{2};
+            % gyro_m =  obj.IMUreading{2};
+            gyro_m = obj.IMUTruthreading{2}; % rotation is known
 
             acc_nom  = acc_m'  + obj.NomState(11:13); %bias sign is plus due to negatiation of acc vector on matlab
-            gyro_nom = gyro_m' - obj.NomState(14:16);
+            % gyro_nom = gyro_m' - obj.NomState(14:16);
+            gyro_nom = gyro_m' - 0;
+
 
             V = obj.NomState(4:6);
-            % V(3) = 0;
+            V(3) = 0;
 
             % Nominal state kinematics
             obj.NomState(1:3)   = obj.NomState(1:3) + obj.insdt * (V +  0*0.5 * (RotM * acc_nom + obj.g) * obj.insdt);
@@ -201,6 +204,7 @@ classdef INSbot < handle
             obj.TrueState(7:10)  = quatmultiply(obj.TrueState(7:10)' , (obj.exp_quat(gyro_true * obj.insdt))');
             obj.TrueState(11:13) = obj.TrueState(11:13);
             obj.TrueState(14:16) = obj.TrueState(14:16);
+
         end
 
         function CorrectedState = correctINS(obj,dx)
