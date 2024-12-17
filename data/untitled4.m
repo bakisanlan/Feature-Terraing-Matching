@@ -87,7 +87,7 @@ close all; clc;clear
 bigImg = im2gray(imread('itu_map_square.jpg'));
 bigImg = im2double(bigImg); % for safe interpolation if needed
 
-N = 500;
+N = 10;
 
 % Dimensions of the camera image
 camWidth = 320;
@@ -111,14 +111,16 @@ part_image = cellfun(@(x,y) imrotate(bigImg(y:y+camHeight-1, x:x+camWidth-1, :),
 % toc
 
 %feature extraction
+tic
 [features1,valid_points1] = extractFeatures(UAV_image,detectORBFeatures(UAV_image,"NumLevels",1));
+toc
 
 tic
 [features2,valid_points2] = cellfun(@(x) extractFeatures(x,detectORBFeatures(x,"NumLevels",1)),part_image,'UniformOutput',false);
 toc
 
 tic
-indexPairs = cellfun(@(x) matchFeatures(features1,x),features2,'UniformOutput',false);
+indexPairs = cellfun(@(x) matchFeatures(features1,x,"Method","Exhaustive"),features2,'UniformOutput',false);
 toc
 
 tic
@@ -152,7 +154,7 @@ toc
 
 % Show the large base map
 figure;
-imshow(bigImg);
+imshow(bigImg*0);
 hold on;
 
 for i = 1:N
@@ -187,8 +189,8 @@ title('All 500 images overlaid at their respective locations');
 
 
 %%
-xCenter = 2010;
-yCenter = 2010;
+xCenter = 1510;
+yCenter = 1510;
 xstart = xCenter - camWidth/2;
 ystart = yCenter - camHeight/2;
 subimage = bigImg(ystart:ystart+camHeight-1,xstart:xstart+camWidth-1,:);
@@ -200,8 +202,8 @@ imshow(rotsubimage)
 %%
 
 figure
-points1 = detectORBFeatures(gray1);
-[features1,valid_points1] = extractFeatures(gray1,points1);
+points1 = detectORBFeatures(UAV_image);
+[features1,valid_points1] = extractFeatures(UAV_image,points1);
 
 points2 = detectORBFeatures(gray2);
 [features2,valid_points2] = extractFeatures(gray2,points2);
@@ -211,5 +213,5 @@ indexPairs = matchFeatures(features1,features2);
 matchedPoints1 = valid_points1(indexPairs(:,1),:);
 matchedPoints2 = valid_points2(indexPairs(:,2),:);
 
-showMatchedFeatures(gray1,gray2,matchedPoints1,matchedPoints2)
+showMatchedFeatures(UAV_image,gray2,matchedPoints1,matchedPoints2)
 

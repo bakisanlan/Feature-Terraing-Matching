@@ -46,13 +46,13 @@ hAircraft.TrueState = [pos0 ; V0 ; quat0' ; zeros(3,1)         ; zeros(3,1)];
 hAircraft.prevTrueVelocity = [V0 ; u(1,2)];
 
 %% Estimator settings
-N_part = 500;                % number of particles
+N_part = 1;                % number of particles
 mu_part    = zeros(3,1);
-std_part   = [10 ; 10 ; 0];
+std_part   = [10 ; 10 ; 0.1];
 % std_part   = [0 ; 0 ; 0];
 
 mu_kalman  = zeros(12,1);
-cov_kalman = diag([3 ; 3 ; 1 ; ones(9,1)].*rand(12,1));
+cov_kalman = diag([std_part.^2 ; ones(9,1)]);
 % exp_rate = 0;               % exploration rate of Particle Filter
 R = 9;                % radar altitude standart error in meters
 rayCast = false;
@@ -77,7 +77,7 @@ traceEstimatedState  = [];
 particles_history(1:N_part,:) = hEstimator.particles(1:3,:)';
 
 simTime = 0;
-Tf = 50;
+Tf = 80;
 %Kinematic Model Simulation
 inputParticle = cell(1);
 AircraftNomState = cell(1);
@@ -86,7 +86,7 @@ true_rot = cell(1);
 true_pos = cell(1);
 
 j = 1;
-ndownsample = 20; % for particle location to radar point location plot
+ndownsample = 1; % for particle location to radar point location plot
 
 while simTime < Tf
     idx = round(simTime/IMUTs + 1);
@@ -189,34 +189,35 @@ disp(['Estimation error of Fused Filter ',num2str(mean_errorFused),' meters mean
 disp(['Estimation error Rotation of Fused Filter ',num2str(mean_errorFusedRot),' degrees mean and ',num2str(mean_stdFusedRot),' std'])
 
 %%
-% % particles_history(:,2) = -particles_history(:,2) + 200;
-% particles_history_px   =  round(particles_history * (1/hAIM.mp));
-% 
-% % tracePose(:,2) = -tracePose(:,2) + 200;
-% tracePose_px   =  round(tracePose * (1/hAIM.mp));
-% 
-% % traceINSnoFusePose(:,2) = -traceINSnoFusePose(:,2) + 200;
-% traceINSnoFusePose_px   =  round(traceINSnoFusePose * (1/hAIM.mp));
-% 
-% % traceEstimatedPose(:,2) = -traceEstimatedPose(:,2) + 200;
-% traceEstimatedPose_px   =  round(traceEstimatedPose * (1/hAIM.mp));
+particles_history(:,2) = -particles_history(:,2) + 200;
+particles_history_px   =  round(particles_history * (1/hAIM.mp));
 
+tracePose(:,2) = -tracePose(:,2) + 200;
+tracePose_px   =  round(tracePose * (1/hAIM.mp));
+
+traceINSnoFusePose(:,2) = -traceINSnoFusePose(:,2) + 200;
+traceINSnoFusePose_px   =  round(traceINSnoFusePose * (1/hAIM.mp));
+
+traceEstimatedPose(:,2) = -traceEstimatedPose(:,2) + 200;
+traceEstimatedPose_px   =  round(traceEstimatedPose * (1/hAIM.mp));
+
+%%
 figure
-% imshow(hAIM.I)
+imshow(hAIM.I)
 hold on;
 % 
-% p1 = plot(particles_history_px(:,1),particles_history_px(:,2),'.k',MarkerSize=0.5);
+p1 = plot(particles_history_px(:,1),particles_history_px(:,2),'.y',MarkerSize=5);
 % p1.Color = [0.48,0.47,0.47];
-% plot(tracePose_px(1:ndownsample:end,1),tracePose_px(1:ndownsample:end,2),'*g')
-% plot(traceINSnoFusePose_px(1:ndownsample:end,1),traceINSnoFusePose_px(1:ndownsample:end,2),'^c')
-% plot(traceEstimatedPose_px(1:ndownsample:end,1),traceEstimatedPose_px(1:ndownsample:end,2),'xr')
+plot(tracePose_px(1:ndownsample:end,1),tracePose_px(1:ndownsample:end,2),'*g')
+plot(traceINSnoFusePose_px(1:ndownsample:end,1),traceINSnoFusePose_px(1:ndownsample:end,2),'^c')
+plot(traceEstimatedPose_px(1:ndownsample:end,1),traceEstimatedPose_px(1:ndownsample:end,2),'xr')
 
 
-p1 = plot(particles_history(:,1),particles_history(:,2),'.k',MarkerSize=0.5);
-p1.Color = [0.48,0.47,0.47];
-plot(tracePose(1:ndownsample:end,1),tracePose(1:ndownsample:end,2),'*g')
-plot(traceINSnoFusePose(1:ndownsample:end,1),traceINSnoFusePose(1:ndownsample:end,2),'^c')
-plot(traceEstimatedPose(1:ndownsample:end,1),traceEstimatedPose(1:ndownsample:end,2),'xr')
+% p1 = plot(particles_history(:,1),particles_history(:,2),'.k',MarkerSize=0.5);
+% p1.Color = [0.48,0.47,0.47];
+% plot(tracePose(1:ndownsample:end,1),tracePose(1:ndownsample:end,2),'*g')
+% plot(traceINSnoFusePose(1:ndownsample:end,1),traceINSnoFusePose(1:ndownsample:end,2),'^c')
+% plot(traceEstimatedPose(1:ndownsample:end,1),traceEstimatedPose(1:ndownsample:end,2),'xr')
 
 
 daspect([1 1 0.05]);

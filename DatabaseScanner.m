@@ -80,6 +80,9 @@ classdef DatabaseScanner < handle
         function PartImage = snapPartImage(obj,partWorldPos,yaw)
 
             % rescale y component due to direction of y axis of image frame
+            N_part = length(partWorldPos(:,1));
+            PartImage = cell(N_part,1);
+
             partWorldPos(:,2) = -partWorldPos(:,2) + 200;
 
             % Convert (N,E)m dimension to (u,v)px
@@ -92,10 +95,17 @@ classdef DatabaseScanner < handle
             % UAV position and yaw angle
             xStartCell = num2cell(round(partImgCenterpxPos(:,1) - w/2));
             yStartCell = num2cell(round(partImgCenterpxPos(:,2) - h/2));
+
+            W = obj.AIM.mapDim(1);
+            H = obj.AIM.mapDim(2);
             
-            % tic
-            PartImage = cellfun(@(x,y) imrotate(obj.AIM.I(y:y+h-1, x:x+w-1, :), yaw, 'crop'),xStartCell,yStartCell,'UniformOutput',false);
-            % toc
+            tic
+            % for i=1:length(partWorldPos(:,1))
+            PartImage = cellfun(@(x,y) imrotate(obj.AIM.I(max(min(y:y+h-1,H),1), max(min(x:x+w-1,W),1), :), yaw, 'crop'),xStartCell,yStartCell,'UniformOutput',false);
+            % PartImage{i} = imrotate(obj.AIM.I(yStartCell{i}:yStartCell{i}+h-1, xStartCell{i}:xStartCell{i}+w-1, :), yaw, 'crop');
+            % end
+            toc
+            
 
         end
 
@@ -110,14 +120,21 @@ classdef DatabaseScanner < handle
             % toc
 
             % tic
-            indexPairs = cellfun(@(x) matchFeatures(featuresUAV,x),featuresPart,'UniformOutput',false);
+            indexPairs = cellfun(@(x) matchFeatures(featuresUAV,x),featuresPart,'UniformOutput',false,'ErrorHandler',@obj.errorFunc);
             % toc
 
             % tic
-            [~,inlierIdx,~] = cellfun(@(PartValid,idxPair) estgeotform2d(PartValid(idxPair(:,2),:),validpointsUAV(idxPair(:,1),:),"similarity"),validpointsPart,indexPairs,'UniformOutput',false);
+            [~,inlierIdx,~] = cellfun(@(PartValid,idxPair) estgeotform2d(PartValid(idxPair(:,2),:),validpointsUAV(idxPair(:,1),:),"similarity"),validpointsPart,indexPairs,'UniformOutput',false,'ErrorHandler',@obj.errorFunc);
             % toc
         end
 
+        function [B, A, C] = errorFunc(varargin)
+            A = 0; 
+
+            B = 0;
+
+            C = 0;
+        end
        
     end
 end
