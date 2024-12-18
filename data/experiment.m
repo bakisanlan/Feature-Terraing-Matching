@@ -26,7 +26,7 @@ UAV_loc = [1500, 1500];
 UAV_startx = round(UAV_loc(1) - camWidth/2);
 UAV_starty = round(UAV_loc(2) - camHeight/2);
 
-UAV_image = imrotate(bigImg(UAV_starty:UAV_starty+camHeight-1, UAV_startx:UAV_startx+camWidth-1),yaw);
+UAV_image = imrotate(bigImg(UAV_starty:UAV_starty+camHeight-1, UAV_startx:UAV_startx+camWidth-1),yaw,'crop');
 
 % Convert yaw to radians
 theta = deg2rad(yaw);
@@ -100,14 +100,14 @@ Center = l + (u-l)*rand(N,2);
 xStartCell = num2cell(round(Center(:,1) - camWidth/2));
 yStartCell = num2cell(round(Center(:,2) - camHeight/2));
 
-yaw = 39; % degrees
+yaw = 0; % degrees
 UAV_loc = [1500, 1500];
 UAV_startx = round(UAV_loc(1) - camWidth/2);
 UAV_starty = round(UAV_loc(2) - camHeight/2);
 UAV_image = imrotate(bigImg(UAV_starty:UAV_starty+camHeight-1, UAV_startx:UAV_startx+camWidth-1),yaw);
 
 % tic
-part_image = cellfun(@(x,y) imrotate(bigImg(y:y+camHeight-1, x:x+camWidth-1, :), yaw, 'crop'),xStartCell,yStartCell,'UniformOutput',false);
+part_image = cellfun(@(x,y) imrotate(bigImg(y:y+camHeight-1, x:x+camWidth-1, :), yaw),xStartCell,yStartCell,'UniformOutput',false);
 % toc
 
 %feature extraction
@@ -144,17 +144,12 @@ toc
 % toc
 
 
-
-
-
-
-
 %%
 
 
 % Show the large base map
 figure;
-imshow(bigImg*0);
+imshow(imread('itu_map_square.jpg'));
 hold on;
 
 for i = 1:N
@@ -189,29 +184,55 @@ title('All 500 images overlaid at their respective locations');
 
 
 %%
-xCenter = 1510;
-yCenter = 1510;
+xCenter = 1500;
+yCenter = 2500;
+camWidth = 640;
+camHeight = 480;
 xstart = xCenter - camWidth/2;
 ystart = yCenter - camHeight/2;
+
+bigImg = imread('itu_map_square.jpg');
 subimage = bigImg(ystart:ystart+camHeight-1,xstart:xstart+camWidth-1,:);
-rotsubimage = imrotate(subimage,yaw,"crop");
-gray2 = im2gray(rotsubimage);
+yaw = 45;
+% distortedimage = imresize(subimage,0.5); 
+% distortedimage    = imrotate(subimage,yaw);
+% gray2 = im2gray(distortedimage);
 figure
-imshow(rotsubimage)
+imshow(subimage)
 
 %%
 
 figure
+% points1 = detectSIFTFeatures(UAV_image,'NumLayersInOctave',4,'ContrastThreshold',0.0066667);
 points1 = detectORBFeatures(UAV_image);
 [features1,valid_points1] = extractFeatures(UAV_image,points1);
 
-points2 = detectORBFeatures(gray2);
-[features2,valid_points2] = extractFeatures(gray2,points2);
+% points2 = detectSIFTFeatures(distortedimage,'NumLayersInOctave',4,'ContrastThreshold',0.0066667);
+points2 = detectORBFeatures(distortedimage);
+
+[features2,valid_points2] = extractFeatures(distortedimage,points2);
 
 indexPairs = matchFeatures(features1,features2);
 
 matchedPoints1 = valid_points1(indexPairs(:,1),:);
 matchedPoints2 = valid_points2(indexPairs(:,2),:);
 
-showMatchedFeatures(UAV_image,gray2,matchedPoints1,matchedPoints2)
+[tform,inlierIdx] = estgeotform2d(matchedPoints1,matchedPoints2,"similarity");
+
+inlierPts1 = matchedPoints1(inlierIdx,:);
+inlierPts2 = matchedPoints2(inlierIdx,:);
+ 
+showMatchedFeatures(UAV_image,distortedimage,inlierPts1,inlierPts2,'montage',PlotOptions={'go','go','g-'})
+
+xlim_values = xlim; % Get the x-axis limits
+ylim_values = ylim; % Get the y-axis limits
+
+x_position1 = xlim_values(1) + 3; % Slight padding from right
+y_position1 = ylim_values(1) + 3; % Slight padding from bottom
+
+y_position2 = ylim_values(2) - 0.02 * (ylim_values(2) - ylim_values(1)); % Slight padding from bottom
+
+
+text(x_position1, y_position1,['Inlier Matched Features: ', num2str(sum(inlierIdx)),'/',num2str(length(inlierIdx))], 'Color', 'red', ...
+    'HorizontalAlignment', 'left', 'VerticalAlignment', 'top', 'FontSize', 20,'BackgroundColor','Black');
 
