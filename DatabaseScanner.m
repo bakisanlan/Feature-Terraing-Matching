@@ -1,33 +1,12 @@
 classdef DatabaseScanner < handle
-    %DATABASESCANNER Class wil be used by State Estimators(PSO,PF) for
+    %DATABASESCANNER Class wil be used by State Estimators(PF) for
     %getting measurements of particles through scannig the offline
-    %database map(DTED).
-
-    % Radar pattern of aircraft can be point cloud measurement data by LIDAR
-    % like sensor or single point measurement data by RadarAltimeter sensor
-    % like.
-
-    % Measurement of particles can be found by below two methods those are
-    % raycasting, sliding.
-    %       - Each particle raycasts from its current reference map
-    %         position (xw,yw) to get point cloud (Xp,Yp,Zp) represented in
-    %         the particle's frame. Elevations Zp are then compared with
-    %         Zm. Currently, the (Xp,Yp) information is not compared with
-    %         (Xm,Ym).
-    %       - Each particle uses the (Xm,Ym) pattern and its current
-    %         reference map position (xw,yw) to directly read Zp elevation
-    %         values at (xw,yw)+(Xm,Ym) to get a point cloud (Xm,Ym,Zp).
-    %         The Zp elevations are then compared with Zm. Thus no
-    %         raycasting is performed.
+    %database map(Satellite Image).
 
    
-
     properties
-        % There are two different type of sliding methods those are 
-        % interpolation method, single orthogonal raycasting. TODO: second
-        % one can be deleted becasue of interp method is very fast.
-        snapDim
-        AIM
+        snapDim    %Snapped image dimension [W,H]
+        AIM        %AerialImageModel object holder
         num_level  % ORB num level parameter
 
     end
@@ -44,95 +23,111 @@ classdef DatabaseScanner < handle
         end
 
         function partlikelihood = find_likelihood(obj,partImgCenterWorldPos,yaw,UAVImage)
-            % FETCHPARTMEASUREMENT function will be called by State Estimators(PSO,PF)
-            % to get measurement of particles. Function outputs are 2D
-            % array that's size are NxM. N is number of particles and M is
-            % number of point in point cloud measurement.
+            % find_likelihood function will be called by State Estimators(PF)
+            % to get likelihood vaulues of particles. Likelihood values 
+            % are calculated through image mathcing prosedure. 
 
+            % Particles Image Cell Array that created by snapPartImage
+            % function with using 2D position and yaw information of
+            % particles
             PartImage = obj.snapPartImage(partImgCenterWorldPos,yaw);
 
+            % Getting inlierIdx boolean(0 or 1) cell array
             inlierIdx = obj.ImageMatching(UAVImage,PartImage);
 
+            % Counting how many inliers matched feature points have each
+            % particles with using sum(x) function
             numMatchedFeature = cellfun(@(x) sum(x),inlierIdx);
 
-            % deal later of likelihood function
+            % For now we find likelihood = number of mathced inlier feature
+            %points. Later we can use an exponential function to handle
+            %beter results.
             partlikelihood = numMatchedFeature;
         end
 
         function UAVImage = snapUAVImage(obj,UAVWorldPos,yaw)
         
-            % rescale y component due to direction of y axis of image frame
-            UAVWorldPos(2) = -UAVWorldPos(2) + 200;
+            % Rescale y component due to direction of y axis of image frame
+            % is opposite with world frame
+            UAVWorldPos(2) = -UAVWorldPos(2);
 
+            % Finding UAV corresponding pixel location using meter/pixel
+            % ratio
             UAVImgCenterpxPos = round(UAVWorldPos * (1/obj.AIM.mp));
 
             % Dimensions of the camera image
             w = obj.snapDim(1);
             h = obj.snapDim(2);
 
+            % Cropping and rotating(might be unnecessary) UAV image
             xStart = UAVImgCenterpxPos(1) - w/2;
             yStart = UAVImgCenterpxPos(2) - h/2;
-
             UAVImage = imrotate(obj.AIM.I(yStart:yStart+h-1, xStart:xStart+w-1, :), yaw, 'crop');
     
         end
 
         function PartImage = snapPartImage(obj,partWorldPos,yaw)
 
-            % rescale y component due to direction of y axis of image frame
-            N_part = length(partWorldPos(:,1));
-            PartImage = cell(N_part,1);
+            % Rescale y component due to direction of y axis of image frame
+            partWorldPos(:,2) = -partWorldPos(:,2);
 
-            partWorldPos(:,2) = -partWorldPos(:,2) + 200;
-
-            % Convert (N,E)m dimension to (u,v)px
+            % Convert (N,E)meters dimension to (u,v)px
             partImgCenterpxPos = round(partWorldPos * (1/obj.AIM.mp));
 
             % Dimensions of the camera image
             w = obj.snapDim(1);
             h = obj.snapDim(2);
             
-            % UAV position and yaw angle
+            % Particles pixel position and yaw angle
             xStartCell = num2cell(round(partImgCenterpxPos(:,1) - w/2));
             yStartCell = num2cell(round(partImgCenterpxPos(:,2) - h/2));
 
             W = obj.AIM.mapDim(1);
             H = obj.AIM.mapDim(2);
             
-            tic
-            % for i=1:length(partWorldPos(:,1))
+            % Cropping and rotating each of particles with using 'cellfun'
+            % rather than a 'for loop'. Resulting array is a 'cell array'.
             PartImage = cellfun(@(x,y) imrotate(obj.AIM.I(max(min(y:y+h-1,H),1), max(min(x:x+w-1,W),1), :), yaw, 'crop'),xStartCell,yStartCell,'UniformOutput',false);
-            % PartImage{i} = imrotate(obj.AIM.I(yStartCell{i}:yStartCell{i}+h-1, xStartCell{i}:xStartCell{i}+w-1, :), yaw, 'crop');
-            % end
-            toc
-            
 
         end
 
         function inlierIdx = ImageMatching(obj,UAVimage,PartImage)
+            %%This function return matched feature points between UAV Image
+            %%and Particle Image after remove outliers. Different feature
+            %%extraction and feature matching algorithm can be used. For
+            %%now, this function uses 'ORB' feature extractor and 'kNN'
+            %%based feature matching method. In the next version learning
+            %%based feature extractor 'Superpoint' and feature matcher
+            %%'LightGlue' will be use. 'inlierIdx' is a cell array
+            %%contais boolean(0 or 1) array in each elements that
+            %%demonstrate mathced feature inlier or not. We then count how
+            %%many inliers points particles have for finding likelihood.
 
-            %feature extraction
-            
+            %Feature extraction of UAV image
             [featuresUAV,validpointsUAV] = extractFeatures(UAVimage,detectORBFeatures(UAVimage,"NumLevels",obj.num_level));
 
             % tic
+            % Feature extraction of particles images using 'cellfun' rather
+            % then 'forloop'
             [featuresPart,validpointsPart] = cellfun(@(x) extractFeatures(x,detectORBFeatures(x,"NumLevels",obj.num_level)),PartImage,'UniformOutput',false);
             % toc
 
             % tic
+            % Featuer matching between UAV and Particles images
             indexPairs = cellfun(@(x) matchFeatures(featuresUAV,x),featuresPart,'UniformOutput',false,'ErrorHandler',@obj.errorFunc);
             % toc
 
             % tic
+            % Outlier removal prosedure
             [~,inlierIdx,~] = cellfun(@(PartValid,idxPair) estgeotform2d(PartValid(idxPair(:,2),:),validpointsUAV(idxPair(:,1),:),"similarity"),validpointsPart,indexPairs,'UniformOutput',false,'ErrorHandler',@obj.errorFunc);
             % toc
         end
 
         function [B, A, C] = errorFunc(varargin)
+            %This is a helper function for preventing 'cellfun' error
+            % massage occurs
             A = 0; 
-
             B = 0;
-
             C = 0;
         end
        

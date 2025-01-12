@@ -4,34 +4,22 @@ classdef AerialImageModel < handle
     %   Processes a DTED file gathered by NASA SRTM.
 
     properties
-        % Map dimensions
-        mapDim;
-        num_level
 
-        % A and R
-        I  % base image in mxnxc sized
-        mp % meter/pixel ratio
-        featuresBase
-        validpointsBase
+        mapDim;         % Map dimensions
+        num_level       % Orb feature descriptor parameter
+        I               % base image in mxnxc sized
+        mp              % meter/pixel ratio
+        featuresBase    %Feature descriptor of Base Image 
+        validpointsBase %Interest point of Base Image
     end
 
     methods
-        function obj = AerialImageModel(area)
-            %DigitalElevationModel Constructs a DEM terrain object.
-            
+        function obj = AerialImageModel(area)            
             % Load elevation data from fill
             if strcmpi(area,'ITU')
-                % DTED at (41N, 29E) of the Bosphorus.
+                % ITU Location Satellite Image
                 obj.loadData(fullfile(fileparts(mfilename('fullpath')),...
                     'data/itu_map_square.jpg'));
-            elseif strcmpi(area,'GC')
-               obj.loadData(fullfile(fileparts(mfilename('fullpath')),...
-                    'data/n36_w113_1arc_v3.dt2'));
-            elseif strcmpi(area, 'MR')
-                % load Marmara Region with 40-42 latitudes and 27-30 longitudes
-                lats = 40:41; % DTED latitudes range
-                lons = 27:29; % DTED longitudes range
-                obj.loadBatchData(lats, lons);
             else
                 error('Enter a valid area name.')
             end
@@ -40,47 +28,42 @@ classdef AerialImageModel < handle
         function loadData(obj,filename)
             %loadData Load data from file
 
-            obj.I  = im2double(im2gray(imread(filename)));
+            obj.I  = im2double(im2gray(imread(filename))); %gray scale double type image array
             obj.mapDim = size(obj.I);
-            obj.mp = 725/obj.mapDim(1);
+            obj.mp = 725/obj.mapDim(1);     % 725meters ~= mapDim(1), meter/pixel ratio
             obj.num_level = 1;
             [obj.featuresBase,obj.validpointsBase] = extractFeatures(obj.I,detectORBFeatures(obj.I,"NumLevels",obj.num_level));
 
 
         end
 
-        function loadBatchData(obj, lats, lons)
-            % load batch of latitudes longitudes
-           
-        end
-
         function Icropped = slice(obj,xmin,ymin,width,height)
-            %slice Return a slice of the loaded DTED data.
+            %slice Return a slice of the loaded IMAGE data.
             Icropped = imcrop(obj.I,[xmin,ymin,width,height]);
             
         end
 
 
         function visualizeBaseAerialImage(obj)
-            %visualizeDTED visualizes loaded DTED file.
+            %visualizeDTED visualizes loaded IMAGE file.
 
             figure; clf;
             imshow(obj.I)
 
         end
 
-        function visualizeDTEDSlice(obj,xmin,ymin,width,height)
-            %visualizeDTED visualizes a given slice of the loaded DTED
-            %file.
+        function visualizeSlicedAerialImage(obj,xmin,ymin,width,height)
+            %visualizeSlicedAerialImage visualizes a given slice of the
+            %loaded IMAGE file.
 
             figure; clf;
             Icropped = slice(obj,xmin,ymin,width,height);
             imshow(Icropped)
         end
 
-        function visualizeDTEDSliceGray(obj,xmin,ymin,width,height)
-            %visualizeDTED visualizes a given slice of the loaded DTED
-            %file in Gray color.
+        function visualizeSlicedGrayAerialImage(obj,xmin,ymin,width,height)
+            %visualizeSlicedGrayAerialImage visualizes a given slice of the
+            %loaded IMAGE file in Gray color.
 
             figure; clf;
             Icropped = slice(obj,xmin,ymin,width,height);

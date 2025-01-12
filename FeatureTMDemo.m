@@ -6,18 +6,18 @@ IMUTs = 0.1;
 KINTs = 0.1;
 initialState = zeros(16,1); refLLA = [41 29 0];
 ReferenceFrame = 'ENU';
-hAircraft = INSbot(initialState, IMUTs, KINTs, ReferenceFrame, IMUtype);
+hAircraft = INSbot(initialState, KINTs, ReferenceFrame, IMUtype);
 
 %% DTED
 area = 'ITU';
 hAIM                    = AerialImageModel(area);
 hUAVScanner             = DatabaseScanner;
-hReferenceMapScanner    = DatabaseScanner;
+hDataBaseScanner    = DatabaseScanner;
 
 %% Scanner Settings
 
 hUAVScanner.AIM          = hAIM;
-hReferenceMapScanner.AIM = hAIM;
+hDataBaseScanner.AIM = hAIM;
 
 %% Aircraft Settings
 x0      = 100;
@@ -58,7 +58,7 @@ R = 9;                % radar altitude standart error in meters
 rayCast = false;
 hEstimator = StateEstimatorMPF(N_part,mu_part,std_part,mu_kalman,cov_kalman,IMUTs,R);
 rng(32,"twister");
-hEstimator.hReferenceMapScanner = hReferenceMapScanner;
+hEstimator.hDataBaseScanner = hDataBaseScanner;
 hEstimator.Accelerometer = hAircraft.IMU.Accelerometer;
 hEstimator.Gyroscope     = hAircraft.IMU.Gyroscope;
 
@@ -92,28 +92,27 @@ while simTime < Tf
     idx = round(simTime/IMUTs + 1);
     hAircraft.move(u(idx,:),aircraft_model_flag);
 
-    if mod(hAircraft.KINPerIMU,hAircraft.KINRateIMU) == 0
 
-        AircraftNomState{j} = hAircraft.NomState;
+    AircraftNomState{j} = hAircraft.NomState;
 
-        inputParticle{j} =[hAircraft.IMUreading{1}' ; hAircraft.IMUreading{2}'];
+    inputParticle{j} =[hAircraft.IMUreading{1}' ; hAircraft.IMUreading{2}'];
 
-        % UAV camera scan
-        UAVImage{j} = hUAVScanner.snapUAVImage(hAircraft.TrueKinState(1:2),rad2deg(hAircraft.TrueKinState(4)));
+    % UAV camera scan
+    UAVImage{j} = hUAVScanner.snapUAVImage(hAircraft.TrueKinState(1:2),rad2deg(hAircraft.TrueKinState(4)));
 
-        true_rot{j} = [hAircraft.TrueKinState(4) 0 0];
-        true_pos{j} = [hAircraft.TrueKinState(1:3)];
+    true_rot{j} = [hAircraft.TrueKinState(4) 0 0];
+    true_pos{j} = [hAircraft.TrueKinState(1:3)];
 
-        truePose      = hAircraft.TrueKinState(1:3)';
-        trueState     = hAircraft.TrueKinState';
-        INSnoFusePose = hAircraft.NomState(1:3)';
+    truePose      = hAircraft.TrueKinState(1:3)';
+    trueState     = hAircraft.TrueKinState';
+    INSnoFusePose = hAircraft.NomState(1:3)';
 
-        tracePose            = [tracePose            ; truePose];
-        traceState           = [traceState           ; trueState];
-        traceINSnoFusePose   = [traceINSnoFusePose   ; INSnoFusePose];
+    tracePose            = [tracePose            ; truePose];
+    traceState           = [traceState           ; trueState];
+    traceINSnoFusePose   = [traceINSnoFusePose   ; INSnoFusePose];
 
-        j = j + 1;        
-    end
+    j = j + 1;        
+
 
     simTime = simTime + KINTs;
 
